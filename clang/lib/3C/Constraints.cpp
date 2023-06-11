@@ -29,7 +29,13 @@ bool Constraints::removeConstraint(Constraint *C) {
     RetVal = TheConstraints.erase(C) != 0;
     // Delete from graph.
     ConstraintsGraph *TG = nullptr;
-    TG = GE->constraintIsChecked() ? ChkCG : PtrTypCG;
+    if (GE->constraintIsChecked())
+      TG = ChkCG;
+    else if (GE->constraintIsVoidPtr())
+      TG = VoidPtrTypeCG;
+    else
+      TG = PtrTypCG;
+
     RetVal = true;
     // Remove the edge form the corresponding constraint graph.
     TG->removeEdge(GE->getRHS(), GE->getLHS());
@@ -85,6 +91,8 @@ bool Constraints::addConstraint(Constraint *C) {
     if (Geq *G = dyn_cast<Geq>(C)) {
       if (G->constraintIsChecked())
         ChkCG->addConstraint(G, *this);
+      else if (G->constraintIsVoidPtr())
+        VoidPtrTypeCG->addConstraint(G, *this);
       else
         PtrTypCG->addConstraint(G, *this);
     }
@@ -185,6 +193,14 @@ doSolve(ConstraintsGraph &CG,
     for (auto *NeighborA : Neighbors) {
       if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
         ConstAtom *NghSol = Env.getAssignment(Neighbor);
+        // Handle void pointer constraint
+        if (NghSol->getKind()== Atom::V_Ptr) {
+          if ((CurrSol->getKind() == NghSol->getKind()) || (CurrSol->getKind()== Atom::V_Ptr)) {
+            bool Changed = Env.assign(Neighbor, CurrSol);
+            assert(Changed);
+            WorkList.push_back(Neighbor);
+          }
+        }
         // update solution if doing so would change it
         // checked? --- if sol(Neighbor) <> (sol(Neighbor) JOIN Cur)
         //   else   --- if sol(Neighbor) <> (sol(Neighbor) MEET Cur)
@@ -308,6 +324,7 @@ bool Constraints::graphBasedSolve() {
   std::set<ConstraintsGraph::EdgeType *> Conflicts;
   ConstraintsGraph SolChkCG;
   ConstraintsGraph SolPtrTypCG;
+  ConstraintsGraph SolVoidPtrTypeCG;
   ConstraintsEnv &Env = Environment;
 
   // Checked well-formedness.
@@ -318,6 +335,8 @@ bool Constraints::graphBasedSolve() {
     if (Geq *G = dyn_cast<Geq>(C)) {
       if (G->constraintIsChecked())
         SolChkCG.addConstraint(G, *this);
+      else if (G->constraintIsVoidPtr())
+        SolVoidPtrTypeCG.addConstraint(G, *this);
       else
         // Need to copy whether or not this constraint into the new graph
         SolPtrTypCG.addConstraint(G, *this);
@@ -326,7 +345,7 @@ bool Constraints::graphBasedSolve() {
 
   if (_3COpts.DebugSolver)
     GraphVizOutputGraph::dumpConstraintGraphs("initial_constraints_graph.dot",
-                                              SolChkCG, SolPtrTypCG);
+                                              SolChkCG, SolPtrTypCG, SolVoidPtrTypeCG);
 
   // Solve Checked/unchecked constraints first.
   Env.doCheckedSolve(true);
@@ -348,13 +367,16 @@ bool Constraints::graphBasedSolve() {
           },
           getNTArr());
       Res = doSolve(SolPtrTypCG, Env, this, true, nullptr, Conflicts);
+      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, false, nullptr, Conflicts);
     } else if (_3COpts.OnlyGreatestSol) {
       // Do only greatest solution
       Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts);
+      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, nullptr, Conflicts);
     } else {
       // Regular solve
       // Step 1: Greatest solution
       Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts);
+      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, nullptr, Conflicts);
     }
 
     // Step 2: Reset all solutions but for function params,
@@ -401,6 +423,7 @@ bool Constraints::graphBasedSolve() {
       std::set<VarAtom *> LowerBounded = findBounded(SolPtrTypCG, &Rest, true);
 
       Res = doSolve(SolPtrTypCG, Env, this, true, &Rest, Conflicts);
+      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, false, &Rest, Conflicts);
 
       // Step 3: Reset local variable solutions, compute greatest
       if (Res) {
@@ -414,6 +437,7 @@ bool Constraints::graphBasedSolve() {
             getPtr());
 
         Res = doSolve(SolPtrTypCG, Env, this, false, &Rest, Conflicts);
+        Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, &Rest, Conflicts);
       }
     }
     // If PtrType solving (partly) failed, make the affected VarAtoms wild.
@@ -533,6 +557,10 @@ VarAtom *Constraints::getFreshVar(std::string Name, VarAtom::VarKind VK) {
   return Environment.getFreshVar(getDefaultSolution(), Name, VK);
 }
 
+VoidPtrAtom *Constraints::getFreshVoidPtrVar(std::string Name, VarAtom::VarKind VK) {
+  return Environment.getFreshVoidPtrVar(getDefaultSolution(), Name, VK);
+}
+
 VarAtom *Constraints::getVar(ConstraintKey V) const {
   return Environment.getVar(V);
 }
@@ -551,6 +579,7 @@ PtrAtom *Constraints::getPtr() const { return PrebuiltPtr; }
 ArrAtom *Constraints::getArr() const { return PrebuiltArr; }
 NTArrAtom *Constraints::getNTArr() const { return PrebuiltNTArr; }
 WildAtom *Constraints::getWild() const { return PrebuiltWild; }
+VoidPtrConstAtom *Constraints::getVoidPtr() const { return PrebuiltVoidPtr; }
 
 ConstAtom *Constraints::getAssignment(Atom *A) {
   Environment.doCheckedSolve(true);
@@ -569,7 +598,7 @@ const ConstraintsGraph &Constraints::getPtrTypCG() const {
 }
 
 Geq *Constraints::createGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
-                            bool IsCheckedConstraint, bool Soft) {
+                            bool IsCheckedConstraint, bool IsVoidPtrConstraint, bool Soft) {
   if (Rsn.Location.valid()) {
     // Make this invalid, if the source location is not absolute path
     // this is to avoid crashes in clangd.
@@ -577,7 +606,7 @@ Geq *Constraints::createGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
       Rsn.Location = PersistentSourceLoc();
   }
   assert("Shouldn't be constraining WILD >= VAR" && Lhs != getWild());
-  return new Geq(Lhs, Rhs, Rsn, IsCheckedConstraint, Soft);
+  return new Geq(Lhs, Rhs, Rsn, IsCheckedConstraint, IsVoidPtrConstraint, Soft);
 }
 
 void Constraints::resetEnvironment() {
@@ -593,6 +622,7 @@ Constraints::Constraints() {
   PrebuiltArr = new ArrAtom();
   PrebuiltNTArr = new NTArrAtom();
   PrebuiltWild = new WildAtom();
+  PrebuiltVoidPtr = new VoidPtrConstAtom();
   ChkCG = new ConstraintsGraph();
   PtrTypCG = new ConstraintsGraph();
 }
@@ -602,6 +632,7 @@ Constraints::~Constraints() {
   delete PrebuiltArr;
   delete PrebuiltNTArr;
   delete PrebuiltWild;
+  delete PrebuiltVoidPtr;
   if (ChkCG != nullptr)
     delete (ChkCG);
   if (PtrTypCG != nullptr)
@@ -652,6 +683,13 @@ VarAtom *ConstraintsEnv::getFreshVar(VarSolTy InitC, std::string Name,
   return NewVA;
 }
 
+VoidPtrAtom* ConstraintsEnv::getFreshVoidPtrVar(VarSolTy InitC, std::string Name,
+                                             VarAtom::VarKind VK) {
+  VoidPtrAtom *NewVPA = getOrCreateVoidPtrVar(ConsFreeKey, InitC, Name, VK);
+  ConsFreeKey++;
+  return NewVPA;
+}
+
 VarAtom *ConstraintsEnv::getOrCreateVar(ConstraintKey V, VarSolTy InitC,
                                         std::string Name, VarAtom::VarKind VK) {
   VarAtom Tv(V, Name, VK);
@@ -660,6 +698,18 @@ VarAtom *ConstraintsEnv::getOrCreateVar(ConstraintKey V, VarSolTy InitC,
   if (I != Environment.end())
     return I->first;
   VarAtom *VA = new VarAtom(Tv);
+  Environment[VA] = InitC;
+  return VA;
+}
+
+VoidPtrAtom *ConstraintsEnv::getOrCreateVoidPtrVar(ConstraintKey V, VarSolTy InitC,
+                                        std::string Name, VarAtom::VarKind VK) {
+  VoidPtrAtom Tv(V, Name, VK);
+  EnvironmentMap::iterator I = Environment.find(&Tv);
+
+  if (I != Environment.end())
+    return (VoidPtrAtom *) I->first;
+  VoidPtrAtom *VA = new VoidPtrAtom(Tv);
   Environment[VA] = InitC;
   return VA;
 }

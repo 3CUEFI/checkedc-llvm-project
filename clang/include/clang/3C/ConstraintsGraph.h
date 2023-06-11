@@ -287,7 +287,7 @@ private:
 class GraphVizEdge
     : public llvm::DGEdge<DataNode<Atom *, GraphVizEdge>, GraphVizEdge> {
 public:
-  enum EdgeKind { EK_Checked, EK_Ptype };
+  enum EdgeKind { EK_Checked, EK_Ptype, EK_VoidPtype };
   explicit GraphVizEdge(DataNode<Atom *, GraphVizEdge> &Node, EdgeKind Kind,
                         bool Soft)
       : DGEdge(Node), Kind(Kind), IsBidirectional(false), IsSoft(Soft) {}
@@ -311,7 +311,8 @@ public:
   // is the pointer type graph.
   static void dumpConstraintGraphs(const std::string &GraphDotFile,
                                    const ConstraintsGraph &Chk,
-                                   const ConstraintsGraph &Pty);
+                                   const ConstraintsGraph &Pty,
+                                   const ConstraintsGraph &VoidPtrTypeCG);
 
   // These maps are used because the graphviz utility provided by llvm does not
   // give an easy way to differentiate between multiple edges between the same
@@ -320,6 +321,7 @@ public:
   // correct color when it is output.
   mutable std::set<std::pair<Atom *, Atom *>> DoneChecked;
   mutable std::set<std::pair<Atom *, Atom *>> DonePtyp;
+  mutable std::set<std::pair<Atom *, Atom *>> DoneVoidPtyp;
 
 private:
   void mergeConstraintGraph(const ConstraintsGraph &Graph,

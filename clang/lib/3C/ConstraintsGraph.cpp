@@ -63,6 +63,10 @@ std::string llvm::DOTGraphTraits<GraphVizOutputGraph>::getEdgeAttributes(
                CG.DonePtyp.find(EPair) == CG.DonePtyp.end()) {
       GE = E;
     }
+    else if (E->Kind == GraphVizEdge::EK_VoidPtype &&
+               CG.DoneVoidPtyp.find(EPair) == CG.DoneVoidPtyp.end()) {
+      GE = E;
+    }
     IsSoft = E->IsSoft;
   }
   assert(GE != nullptr);
@@ -70,6 +74,8 @@ std::string llvm::DOTGraphTraits<GraphVizOutputGraph>::getEdgeAttributes(
     CG.DoneChecked.insert(EPair);
   else if (GE->Kind == GraphVizEdge::EK_Ptype)
     CG.DonePtyp.insert(EPair);
+  else if (GE->Kind == GraphVizEdge::EK_VoidPtype)
+    CG.DoneVoidPtyp.insert(EPair);
 
   return "color=" + EdgeTypeColors[GE->Kind] + "," +
          "dir=" + EdgeDirections[GE->IsBidirectional] +
@@ -122,10 +128,12 @@ void GraphVizOutputGraph::mergeConstraintGraph(const ConstraintsGraph &Graph,
 
 void GraphVizOutputGraph::dumpConstraintGraphs(const std::string &GraphDotFile,
                                                const ConstraintsGraph &Chk,
-                                               const ConstraintsGraph &Pty) {
+                                               const ConstraintsGraph &Pty,
+                                               const ConstraintsGraph &VoidPtrTypeCG) {
   GraphVizOutputGraph OutGraph;
   OutGraph.mergeConstraintGraph(Chk, GraphVizEdge::EK_Checked);
   OutGraph.mergeConstraintGraph(Pty, GraphVizEdge::EK_Ptype);
+  OutGraph.mergeConstraintGraph(VoidPtrTypeCG, GraphVizEdge::EK_VoidPtype);
 
   std::error_code Err;
   llvm::raw_fd_ostream DotFile(GraphDotFile, Err);

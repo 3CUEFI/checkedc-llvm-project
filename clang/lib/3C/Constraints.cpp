@@ -91,8 +91,8 @@ bool Constraints::addConstraint(Constraint *C) {
     if (Geq *G = dyn_cast<Geq>(C)) {
       if (G->constraintIsChecked())
         ChkCG->addConstraint(G, *this);
-      else if (G->constraintIsVoidPtr())
-        VoidPtrTypeCG->addConstraint(G, *this);
+//      else if (G->constraintIsVoidPtr())
+//        VoidPtrTypeCG->addConstraint(G, *this);
       else
         PtrTypCG->addConstraint(G, *this);
     }
@@ -367,16 +367,16 @@ bool Constraints::graphBasedSolve() {
           },
           getNTArr());
       Res = doSolve(SolPtrTypCG, Env, this, true, nullptr, Conflicts);
-      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, false, nullptr, Conflicts);
+//      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, false, nullptr, Conflicts);
     } else if (_3COpts.OnlyGreatestSol) {
       // Do only greatest solution
       Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts);
-      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, nullptr, Conflicts);
+     // Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, nullptr, Conflicts);
     } else {
       // Regular solve
       // Step 1: Greatest solution
       Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts);
-      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, nullptr, Conflicts);
+     // Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, nullptr, Conflicts);
     }
 
     // Step 2: Reset all solutions but for function params,
@@ -423,7 +423,7 @@ bool Constraints::graphBasedSolve() {
       std::set<VarAtom *> LowerBounded = findBounded(SolPtrTypCG, &Rest, true);
 
       Res = doSolve(SolPtrTypCG, Env, this, true, &Rest, Conflicts);
-      Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, false, &Rest, Conflicts);
+   //   Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, false, &Rest, Conflicts);
 
       // Step 3: Reset local variable solutions, compute greatest
       if (Res) {
@@ -437,7 +437,7 @@ bool Constraints::graphBasedSolve() {
             getPtr());
 
         Res = doSolve(SolPtrTypCG, Env, this, false, &Rest, Conflicts);
-        Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, &Rest, Conflicts);
+       // Res = Res && doSolve(SolVoidPtrTypeCG, Env, this, true, &Rest, Conflicts);
       }
     }
     // If PtrType solving (partly) failed, make the affected VarAtoms wild.

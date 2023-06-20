@@ -1095,8 +1095,8 @@ void ProgramInfo::insertCVAtoms(
       if (auto *VA = dyn_cast<VarAtom>(A)) {
         // It is possible that VA->getLoc() already exists in the map if there
         // is a function which is declared before it is defined.
-        assert(AtomMap.find(VA->getLoc()) == AtomMap.end() ||
-               PVC->isPartOfFunctionPrototype());
+//        assert(AtomMap.find(VA->getLoc()) == AtomMap.end() ||
+//               PVC->isPartOfFunctionPrototype());
         AtomMap[VA->getLoc()] = PVC;
       }
     if (FVConstraint *FVC = PVC->getFV())

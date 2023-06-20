@@ -459,19 +459,9 @@ PointerVariableConstraint::PointerVariableConstraint(
 
     // This type is not a constant atom. We need to create a VarAtom for this.
     if (!VarCreated) {
-      VarAtom *VA = NULL;
-      if (Ty->isVoidType())
-      {
-        // create void Pointer type atoms
-        VA = CS.getFreshVoidPtrVar(Npre + N, VK);
-        Vars.push_back(VA);
-        SrcVars.push_back(CS.getVoidPtr());
-      }
-      else{
-        VA = CS.getFreshVar(Npre + N, VK);
-        Vars.push_back(VA);
-        SrcVars.push_back(CS.getWild());
-      }
+      VarAtom *VA = CS.getFreshVar(Npre + N, VK);
+      Vars.push_back(VA);
+      SrcVars.push_back(CS.getWild());
 
       // Incomplete arrays are not given ARR as an upper bound because the
       // transformation int[] -> _Ptr<int> is permitted but int[1] -> _Ptr<int>
@@ -522,7 +512,7 @@ PointerVariableConstraint::PointerVariableConstraint(
   IsVoidPtr = QT->isPointerType() && isTypeHasVoid(QT);
   // varargs are always wild, as are void pointers that are not generic
   bool IsWild = isVarArgType(BaseType) ||
-      (!(PotentialGeneric || isGeneric()));
+          (!(PotentialGeneric || isGeneric()) && IsVoidPtr);
   if (IsWild) {
     std::string Rsn =
         IsVoidPtr ? VOID_TYPE_REASON : "Default Var arg list type";
@@ -530,13 +520,6 @@ PointerVariableConstraint::PointerVariableConstraint(
     for (const auto &V : Vars)
       if (VarAtom *VA = dyn_cast<VarAtom>(V))
         CS.addConstraint(CS.createGeq(VA, CS.getWild(), ReasonLoc(Rsn,PSL))); // This is the place where we add the constraint
-  }
-
-  if (IsVoidPtr) {
-    //add a new constraint that the base type is void
-    for (const auto &V : Vars)
-      if (VoidPtrAtom *VA = dyn_cast<VoidPtrAtom>(V))
-        CS.addConstraint(CS.createGeq(VA, CS.getVoidPtr(), ReasonLoc(VOID_TYPE_REASON, PSL)));
   }
 
   // Add qualifiers.
